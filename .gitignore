@@ -1,0 +1,17 @@
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Entorno Virtual
+venv/
+
+# Caché de Python y Herramientas
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Archivos de compilación (opcional)
+*.py[cod]
+hub
