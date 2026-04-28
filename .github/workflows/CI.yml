@@ -1,0 +1,52 @@
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ develop ]
+
+jobs:
+  # ✅ Job de calidad de código y pruebas
+  test-and-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout del código
+        uses: actions/checkout@v4 # Descarga el código de tu repositorio en el servidor de GitHub
+
+      - name: 🐍 Configurar Python
+        uses: actions/setup-python@v5 # Instala la versión 3.11 de Python en el entorno virtual.
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Instalar dependencias de desarrollo
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: 🔎 Ruff  Linting
+        run: ruff check . # Revisa que el código siga las reglas de estilo (espacios, nombres de variables, etc.)
+
+      - name: 🔎 mypy  Chequeo de tipos
+        run: mypy app/ # Verifica que los tipos de datos (strings, integers) se usen correctamente en la carpeta app/
+
+      - name: 🧪 Pytest  Pruebas unitarias
+        run: pytest tests/ -v --cov=app --cov-report=term-missing # Ejecuta las pruebas unitarias y genera un informe de cobertura (qué porcentaje de tu código está probado)
+
+  # 🛡️ Job de escaneo de seguridad con Trivy
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout del código
+        uses: actions/checkout@v4 
+
+      - name: 🛡️ Escanear vulnerabilidades en el sistema de archivos
+        uses: aquasecurity/trivy-action@master 
+        with:
+          scan-type: 'fs' # Escanea el sistema de archivos (código y librerías)
+          scan-ref: '.' # Indica que escanee el directorio actual
+          format: 'table' # Muestra los resultados en formato de tabla
+          exit-code: '1'          # Falla el job si encuentra CRITICAL o HIGH
+          severity: 'CRITICAL,HIGH' # Solo se detendrá y marcará error si encuentra vulnerabilidades críticas o altas.
