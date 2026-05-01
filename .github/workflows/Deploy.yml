@@ -1,0 +1,57 @@
+name: Deploy to EC2 via SSM
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  AWS_REGION: us-east-1                     # Cambia a tu región
+  ECR_REPOSITORY: fastapi-cicd-pipeline
+  IMAGE_TAG: ${{ github.sha }}              # Identificador único del commit
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout del código
+        uses: actions/checkout@v4
+
+      - name: 🔐 Configurar credenciales AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 🐳 Login a Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: 🏗️ Build y Push de imagen Docker
+        run: |
+          docker build -t ${{ env.ECR_REPOSITORY }} .
+          docker tag ${{ env.ECR_REPOSITORY }}:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          docker tag ${{ env.ECR_REPOSITORY }}:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
+
+      - name: 🚀 Desplegar en EC2 via SSM
+        run: |
+          # Construir el comando a ejecutar en la instancia EC2
+          COMMANDS="[
+            'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com',
+            'cd /home/ubuntu',
+            'if [ ! -d fastapi-app ]; then git clone https://github.com/${{ github.repository }}.git fastapi-app; fi',
+            'cd fastapi-app',
+            'git pull origin main',
+            'docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG',
+            'docker tag ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REPOSITORY:latest',
+            'docker compose -f docker-compose.yml up -d --force-recreate',
+            'docker image prune -f'
+          ]"
+          
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=${{ secrets.EC2_INSTANCE_ID }}" \
+            --parameters "commands=$COMMANDS" \
+            --comment "Deploy FastAPI from GitHub Actions" \
+            --timeout-seconds 300
