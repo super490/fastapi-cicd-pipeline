@@ -12,7 +12,7 @@ env:
 permissions:
   id-token: write
   contents: read
-   
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -26,36 +26,51 @@ jobs:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsDeployRole
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: 🐳 Login a Amazon ECR
-        id: login-ecr
+      - name: 🐳 Login a Amazon ECR (Público)
+        id: login-ecr-public
         uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public # Especificamos que es público
 
       - name: 🏗️ Build y Push de imagen Docker
         run: |
+          # Definimos la URL de tu repositorio público según tu imagen
+          PUBLIC_REGISTRY="public.ecr.aws/b7t3n2p4"
+          
           docker build -t ${{ env.ECR_REPOSITORY }} .
-          docker tag ${{ env.ECR_REPOSITORY }}:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-          docker tag ${{ env.ECR_REPOSITORY }}:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
-          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
+          
+          # Tag con el hash del commit
+          docker tag ${{ env.ECR_REPOSITORY }}:latest $PUBLIC_REGISTRY/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          
+          # Tag como latest
+          docker tag ${{ env.ECR_REPOSITORY }}:latest $PUBLIC_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+          
+          # Push a la nube
+          docker push $PUBLIC_REGISTRY/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          docker push $PUBLIC_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
 
       - name: 🚀 Desplegar en EC2 via SSM
         run: |
-          # Construir el comando a ejecutar en la instancia EC2
+          # 1. Definimos la URL pública (ajusta el alias 'b7t3n2p4' si es necesario)
+          PUBLIC_ECR_URL="public.ecr.aws/b7t3n2p4"
+          
+          # 2. Construir los comandos con la URL pública
           COMMANDS="[
-            'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com',
+            'aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws',
             'cd /home/ubuntu',
             'if [ ! -d fastapi-app ]; then git clone https://github.com/${{ github.repository }}.git fastapi-app; fi',
             'cd fastapi-app',
             'git pull origin main',
-            'docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG',
-            'docker tag ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REPOSITORY:latest',
+            'docker pull $PUBLIC_ECR_URL/$ECR_REPOSITORY:$IMAGE_TAG',
+            'docker tag $PUBLIC_ECR_URL/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REPOSITORY:latest',
             'docker compose -f docker-compose.yml up -d --force-recreate',
             'docker image prune -f'
           ]"
           
+          # 3. Ejecución del comando vía AWS SSM
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=${{ secrets.EC2_INSTANCE_ID }}" \
             --parameters "commands=$COMMANDS" \
-            --comment "Deploy FastAPI from GitHub Actions" \
+            --comment "Deploy FastAPI from Public ECR" \
             --timeout-seconds 300
