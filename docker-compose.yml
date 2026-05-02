@@ -2,9 +2,13 @@ version: '3.8'
 
 services:
   fastapi:
-    build: .
+    # Eliminamos 'build: .' porque la imagen ya viene lista de ECR
     image: fastapi-cicd-pipeline:latest
     container_name: fastapi_app
     ports:
-      - "80:8000"         # mapea el puerto 80 del host al 8000 del contenedor (opcional si usas un balanceador o proxy inverso)
+      - "80:8000"
     restart: unless-stopped
+    # Añadimos sección de environment por si tu app necesita configurar algo
+    # environment:
+    #   - DATABASE_URL=${DATABASE_URL}
+    #   - ENV=production
