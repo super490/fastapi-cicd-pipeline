@@ -12,7 +12,3 @@ def health_check():
 
 # Para correr localmente: uvicorn app.main:app --reload
 # /docs para ver la documentación de la API
-
-# este comentario se hizo para ver como funciona el CI
-
-
