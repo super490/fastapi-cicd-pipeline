@@ -13,3 +13,5 @@ def health_check():
 # Para correr localmente: uvicorn app.main:app --reload
 
 # /docs para ver la documentación de la API
+
+# Hacer que funcione el deploy en EC2 con SSM
