@@ -63,7 +63,7 @@ jobs:
             'git pull origin main',
             'docker pull $PUBLIC_ECR_URL/$ECR_REPOSITORY:$IMAGE_TAG',
             'docker tag $PUBLIC_ECR_URL/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REPOSITORY:latest',
-            'docker compose -f docker-compose.yml up -d --force-recreate',
+            'docker-compose -f docker-compose.yml up -d --force-recreate',
             'docker image prune -f'
           ]"
           
@@ -74,3 +74,11 @@ jobs:
             --parameters "commands=$COMMANDS" \
             --comment "Deploy FastAPI from Public ECR" \
             --timeout-seconds 300
+      
+      - name: Verificar estado del comando SSM
+        if: always()  # se ejecuta aunque el paso anterior falle
+        run: |
+          COMMAND_ID=$(aws ssm list-commands --instance-id ${{ secrets.EC2_INSTANCE_ID }} --query 'Commands[0].CommandId' --output text)
+          STATUS=$(aws ssm list-command-invocations --command-id $COMMAND_ID --instance-id ${{ secrets.EC2_INSTANCE_ID }} --query 'CommandInvocations[0].Status' --output text)
+          echo "Estado del comando SSM: $STATUS"
+          if [ "$STATUS" != "Success" ]; then exit 1; fi
