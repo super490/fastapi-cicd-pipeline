@@ -75,10 +75,29 @@ jobs:
             --comment "Deploy FastAPI from Public ECR" \
             --timeout-seconds 300
       
-      - name: Verificar estado del comando SSM
-        if: always()  # se ejecuta aunque el paso anterior falle
+      - name: 🕒 Esperar y verificar despliegue SSM
+        if: always()
         run: |
-          COMMAND_ID=$(aws ssm list-commands --instance-id ${{ secrets.EC2_INSTANCE_ID }} --query 'Commands[0].CommandId' --output text)
-          STATUS=$(aws ssm list-command-invocations --command-id $COMMAND_ID --instance-id ${{ secrets.EC2_INSTANCE_ID }} --query 'CommandInvocations[0].Status' --output text)
-          echo "Estado del comando SSM: $STATUS"
-          if [ "$STATUS" != "Success" ]; then exit 1; fi
+          # Obtener el ID del último comando enviado a la instancia
+          COMMAND_ID=$(aws ssm list-commands \
+            --instance-id ${{ secrets.EC2_INSTANCE_ID }} \
+            --query 'Commands[0].CommandId' --output text)
+
+           echo "ID del comando: $COMMAND  _ID"  
+
+          # Esperar hasta que el comando pase de InProgress/Pending a Success/Failed/T  imedOut
+          aws ssm wait comma  nd-executed \
+            --instance-id ${{ secrets.EC2_INSTANCE_ID }} \
+             --command-id "$COMMAND_ID"
+          
+          # Verificar estado final
+          STATUS=$(aws ssm list-command-invocations \
+            --command-id "$COMMAND_ID" \
+            --instance-id ${{ secrets.EC2_INSTANCE_ID }} \
+            --query 'CommandInvocations[0].Status' --output text)
+          
+          echo "Estado final del comando SSM: $STATUS"
+          if [ "$STATUS" != "Success" ]; then
+            echo "❌ Falló el despliegue en EC2"
+            exit 1
+          fi
