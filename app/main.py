@@ -11,4 +11,5 @@ def health_check():
     return {"status": "ok", "message": "Service is running"}
 
 # Para correr localmente: uvicorn app.main:app --reload
+
 # /docs para ver la documentación de la API
